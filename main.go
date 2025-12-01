@@ -136,9 +136,13 @@ func processBlock(ctx context.Context, client *ethclient.Client, blockNumber uin
 	negRiskAdapterFilterer, _ := negriskadapter.NewNegRiskAdapterFilterer(common.Address{}, nil)
 
 	// Filter transactions by checking their logs for specific events
+	type parsedEvent struct {
+		name string
+		data interface{}
+	}
 	type txWithEvents struct {
 		tx     *types.Transaction
-		events []string
+		events []parsedEvent
 	}
 	var polymarketTxs []txWithEvents
 
@@ -149,45 +153,76 @@ func processBlock(ctx context.Context, client *ethclient.Client, blockNumber uin
 			continue
 		}
 
-		var foundEvents []string
+		var foundEvents []parsedEvent
 
 		// Check logs for events we're interested in
 		for _, log := range receipt.Logs {
-			// Check for OrderFilled event (CTFExchange and NegRiskCtfExchange)
-			if _, err := ctfExchangeFilterer.ParseOrderFilled(*log); err == nil {
-				foundEvents = append(foundEvents, "OrderFilled (CTFExchange)")
+			// Check for OrderFilled event (CTFExchange)
+			if event, err := ctfExchangeFilterer.ParseOrderFilled(*log); err == nil {
+				foundEvents = append(foundEvents, parsedEvent{
+					name: "OrderFilled (CTFExchange)",
+					data: event,
+				})
 			}
-			if _, err := negRiskCtfExchangeFilterer.ParseOrderFilled(*log); err == nil {
-				foundEvents = append(foundEvents, "OrderFilled (NegRiskCtfExchange)")
-			}
-
-			// Check for OrdersMatched event (CTFExchange and NegRiskCtfExchange)
-			if _, err := ctfExchangeFilterer.ParseOrdersMatched(*log); err == nil {
-				foundEvents = append(foundEvents, "OrdersMatched (CTFExchange)")
-			}
-			if _, err := negRiskCtfExchangeFilterer.ParseOrdersMatched(*log); err == nil {
-				foundEvents = append(foundEvents, "OrdersMatched (NegRiskCtfExchange)")
-			}
-
-			// Check for PositionSplit event (ConditionalTokens and NegRiskAdapter)
-			if _, err := conditionalTokensFilterer.ParsePositionSplit(*log); err == nil {
-				foundEvents = append(foundEvents, "PositionSplit (ConditionalTokens)")
-			}
-			if _, err := negRiskAdapterFilterer.ParsePositionSplit(*log); err == nil {
-				foundEvents = append(foundEvents, "PositionSplit (NegRiskAdapter)")
+			// Check for OrderFilled event (NegRiskCtfExchange)
+			if event, err := negRiskCtfExchangeFilterer.ParseOrderFilled(*log); err == nil {
+				foundEvents = append(foundEvents, parsedEvent{
+					name: "OrderFilled (NegRiskCtfExchange)",
+					data: event,
+				})
 			}
 
-			// Check for PositionsMerge event (ConditionalTokens and NegRiskAdapter)
-			if _, err := conditionalTokensFilterer.ParsePositionsMerge(*log); err == nil {
-				foundEvents = append(foundEvents, "PositionsMerge (ConditionalTokens)")
+			// Check for OrdersMatched event (CTFExchange)
+			if event, err := ctfExchangeFilterer.ParseOrdersMatched(*log); err == nil {
+				foundEvents = append(foundEvents, parsedEvent{
+					name: "OrdersMatched (CTFExchange)",
+					data: event,
+				})
 			}
-			if _, err := negRiskAdapterFilterer.ParsePositionsMerge(*log); err == nil {
-				foundEvents = append(foundEvents, "PositionsMerge (NegRiskAdapter)")
+			// Check for OrdersMatched event (NegRiskCtfExchange)
+			if event, err := negRiskCtfExchangeFilterer.ParseOrdersMatched(*log); err == nil {
+				foundEvents = append(foundEvents, parsedEvent{
+					name: "OrdersMatched (NegRiskCtfExchange)",
+					data: event,
+				})
+			}
+
+			// Check for PositionSplit event (ConditionalTokens)
+			if event, err := conditionalTokensFilterer.ParsePositionSplit(*log); err == nil {
+				foundEvents = append(foundEvents, parsedEvent{
+					name: "PositionSplit (ConditionalTokens)",
+					data: event,
+				})
+			}
+			// Check for PositionSplit event (NegRiskAdapter)
+			if event, err := negRiskAdapterFilterer.ParsePositionSplit(*log); err == nil {
+				foundEvents = append(foundEvents, parsedEvent{
+					name: "PositionSplit (NegRiskAdapter)",
+					data: event,
+				})
+			}
+
+			// Check for PositionsMerge event (ConditionalTokens)
+			if event, err := conditionalTokensFilterer.ParsePositionsMerge(*log); err == nil {
+				foundEvents = append(foundEvents, parsedEvent{
+					name: "PositionsMerge (ConditionalTokens)",
+					data: event,
+				})
+			}
+			// Check for PositionsMerge event (NegRiskAdapter)
+			if event, err := negRiskAdapterFilterer.ParsePositionsMerge(*log); err == nil {
+				foundEvents = append(foundEvents, parsedEvent{
+					name: "PositionsMerge (NegRiskAdapter)",
+					data: event,
+				})
 			}
 
 			// Check for PositionsConverted event (NegRiskAdapter)
-			if _, err := negRiskAdapterFilterer.ParsePositionsConverted(*log); err == nil {
-				foundEvents = append(foundEvents, "PositionsConverted (NegRiskAdapter)")
+			if event, err := negRiskAdapterFilterer.ParsePositionsConverted(*log); err == nil {
+				foundEvents = append(foundEvents, parsedEvent{
+					name: "PositionsConverted (NegRiskAdapter)",
+					data: event,
+				})
 			}
 		}
 
@@ -230,10 +265,11 @@ func processBlock(ctx context.Context, client *ethclient.Client, blockNumber uin
 		fmt.Printf("  Gas Price: %s Gwei\n", formatGwei(tx.GasPrice()))
 		fmt.Printf("  Nonce: %d\n", tx.Nonce())
 
-		// Print events found in logs
+		// Print events found in logs with parsed data
 		fmt.Printf("  Events:\n")
 		for _, event := range txData.events {
-			fmt.Printf("    - %s\n", event)
+			fmt.Printf("    - %s\n", event.name)
+			printEventData(event.data, "      ")
 		}
 
 		// Decode transaction data if we can identify the contract
@@ -346,4 +382,88 @@ func formatArgumentValue(value interface{}, typ abi.Type) string {
 	default:
 		return fmt.Sprintf("%v", v)
 	}
+}
+
+// printEventData prints the parsed event data in a readable format
+func printEventData(eventData interface{}, indent string) {
+	switch e := eventData.(type) {
+	// CTFExchange events
+	case *ctfexchange.CtfExchangeOrderFilled:
+		fmt.Printf("%s  OrderHash: 0x%x\n", indent, e.OrderHash)
+		fmt.Printf("%s  Maker: %s\n", indent, e.Maker.Hex())
+		fmt.Printf("%s  Taker: %s\n", indent, e.Taker.Hex())
+		fmt.Printf("%s  MakerAssetId: %s\n", indent, e.MakerAssetId.String())
+		fmt.Printf("%s  TakerAssetId: %s\n", indent, e.TakerAssetId.String())
+		fmt.Printf("%s  MakerAmountFilled: %s\n", indent, e.MakerAmountFilled.String())
+		fmt.Printf("%s  TakerAmountFilled: %s\n", indent, e.TakerAmountFilled.String())
+		fmt.Printf("%s  Fee: %s\n", indent, e.Fee.String())
+	case *ctfexchange.CtfExchangeOrdersMatched:
+		fmt.Printf("%s  TakerOrderHash: 0x%x\n", indent, e.TakerOrderHash)
+		fmt.Printf("%s  TakerOrderMaker: %s\n", indent, e.TakerOrderMaker.Hex())
+		fmt.Printf("%s  MakerAssetId: %s\n", indent, e.MakerAssetId.String())
+		fmt.Printf("%s  TakerAssetId: %s\n", indent, e.TakerAssetId.String())
+		fmt.Printf("%s  MakerAmountFilled: %s\n", indent, e.MakerAmountFilled.String())
+		fmt.Printf("%s  TakerAmountFilled: %s\n", indent, e.TakerAmountFilled.String())
+
+	// NegRiskCtfExchange events
+	case *negriskctfexchange.NegRiskCtfExchangeOrderFilled:
+		fmt.Printf("%s  OrderHash: 0x%x\n", indent, e.OrderHash)
+		fmt.Printf("%s  Maker: %s\n", indent, e.Maker.Hex())
+		fmt.Printf("%s  Taker: %s\n", indent, e.Taker.Hex())
+		fmt.Printf("%s  MakerAssetId: %s\n", indent, e.MakerAssetId.String())
+		fmt.Printf("%s  TakerAssetId: %s\n", indent, e.TakerAssetId.String())
+		fmt.Printf("%s  MakerAmountFilled: %s\n", indent, e.MakerAmountFilled.String())
+		fmt.Printf("%s  TakerAmountFilled: %s\n", indent, e.TakerAmountFilled.String())
+		fmt.Printf("%s  Fee: %s\n", indent, e.Fee.String())
+	case *negriskctfexchange.NegRiskCtfExchangeOrdersMatched:
+		fmt.Printf("%s  TakerOrderHash: 0x%x\n", indent, e.TakerOrderHash)
+		fmt.Printf("%s  TakerOrderMaker: %s\n", indent, e.TakerOrderMaker.Hex())
+		fmt.Printf("%s  MakerAssetId: %s\n", indent, e.MakerAssetId.String())
+		fmt.Printf("%s  TakerAssetId: %s\n", indent, e.TakerAssetId.String())
+		fmt.Printf("%s  MakerAmountFilled: %s\n", indent, e.MakerAmountFilled.String())
+		fmt.Printf("%s  TakerAmountFilled: %s\n", indent, e.TakerAmountFilled.String())
+
+	// ConditionalTokens events
+	case *conditionaltokens.ConditionalTokensPositionSplit:
+		fmt.Printf("%s  Stakeholder: %s\n", indent, e.Stakeholder.Hex())
+		fmt.Printf("%s  CollateralToken: %s\n", indent, e.CollateralToken.Hex())
+		fmt.Printf("%s  ParentCollectionId: 0x%x\n", indent, e.ParentCollectionId)
+		fmt.Printf("%s  ConditionId: 0x%x\n", indent, e.ConditionId)
+		fmt.Printf("%s  Partition: %s\n", indent, formatBigIntArray(e.Partition))
+		fmt.Printf("%s  Amount: %s\n", indent, e.Amount.String())
+	case *conditionaltokens.ConditionalTokensPositionsMerge:
+		fmt.Printf("%s  Stakeholder: %s\n", indent, e.Stakeholder.Hex())
+		fmt.Printf("%s  CollateralToken: %s\n", indent, e.CollateralToken.Hex())
+		fmt.Printf("%s  ParentCollectionId: 0x%x\n", indent, e.ParentCollectionId)
+		fmt.Printf("%s  ConditionId: 0x%x\n", indent, e.ConditionId)
+		fmt.Printf("%s  Partition: %s\n", indent, formatBigIntArray(e.Partition))
+		fmt.Printf("%s  Amount: %s\n", indent, e.Amount.String())
+
+	// NegRiskAdapter events
+	case *negriskadapter.NegRiskAdapterPositionSplit:
+		fmt.Printf("%s  Stakeholder: %s\n", indent, e.Stakeholder.Hex())
+		fmt.Printf("%s  ConditionId: 0x%x\n", indent, e.ConditionId)
+		fmt.Printf("%s  Amount: %s\n", indent, e.Amount.String())
+	case *negriskadapter.NegRiskAdapterPositionsMerge:
+		fmt.Printf("%s  Stakeholder: %s\n", indent, e.Stakeholder.Hex())
+		fmt.Printf("%s  ConditionId: 0x%x\n", indent, e.ConditionId)
+		fmt.Printf("%s  Amount: %s\n", indent, e.Amount.String())
+	case *negriskadapter.NegRiskAdapterPositionsConverted:
+		fmt.Printf("%s  Stakeholder: %s\n", indent, e.Stakeholder.Hex())
+		fmt.Printf("%s  MarketId: 0x%x\n", indent, e.MarketId)
+		fmt.Printf("%s  IndexSet: %s\n", indent, e.IndexSet.String())
+		fmt.Printf("%s  Amount: %s\n", indent, e.Amount.String())
+	}
+}
+
+// formatBigIntArray formats an array of big.Int for display
+func formatBigIntArray(arr []*big.Int) string {
+	if len(arr) == 0 {
+		return "[]"
+	}
+	items := make([]string, 0, len(arr))
+	for _, item := range arr {
+		items = append(items, item.String())
+	}
+	return fmt.Sprintf("[%s]", strings.Join(items, ", "))
 }

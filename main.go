@@ -129,13 +129,71 @@ func processBlock(ctx context.Context, client *ethclient.Client, blockNumber uin
 		return false
 	}
 
-	// Filter transactions that call Polymarket contracts
-	var polymarketTxs []*types.Transaction
+	// Initialize contract filterers for event parsing
+	ctfExchangeFilterer, _ := ctfexchange.NewCtfExchangeFilterer(common.Address{}, nil)
+	negRiskCtfExchangeFilterer, _ := negriskctfexchange.NewNegRiskCtfExchangeFilterer(common.Address{}, nil)
+	conditionalTokensFilterer, _ := conditionaltokens.NewConditionalTokensFilterer(common.Address{}, nil)
+	negRiskAdapterFilterer, _ := negriskadapter.NewNegRiskAdapterFilterer(common.Address{}, nil)
+
+	// Filter transactions by checking their logs for specific events
+	type txWithEvents struct {
+		tx     *types.Transaction
+		events []string
+	}
+	var polymarketTxs []txWithEvents
+
 	for _, tx := range block.Transactions() {
-		if tx.To() != nil {
-			if _, isPolymarket := polymarketContracts[*tx.To()]; isPolymarket {
-				polymarketTxs = append(polymarketTxs, tx)
+		// Get transaction receipt to access logs
+		receipt, err := client.TransactionReceipt(ctx, tx.Hash())
+		if err != nil {
+			continue
+		}
+
+		var foundEvents []string
+
+		// Check logs for events we're interested in
+		for _, log := range receipt.Logs {
+			// Check for OrderFilled event (CTFExchange and NegRiskCtfExchange)
+			if _, err := ctfExchangeFilterer.ParseOrderFilled(*log); err == nil {
+				foundEvents = append(foundEvents, "OrderFilled (CTFExchange)")
 			}
+			if _, err := negRiskCtfExchangeFilterer.ParseOrderFilled(*log); err == nil {
+				foundEvents = append(foundEvents, "OrderFilled (NegRiskCtfExchange)")
+			}
+
+			// Check for OrdersMatched event (CTFExchange and NegRiskCtfExchange)
+			if _, err := ctfExchangeFilterer.ParseOrdersMatched(*log); err == nil {
+				foundEvents = append(foundEvents, "OrdersMatched (CTFExchange)")
+			}
+			if _, err := negRiskCtfExchangeFilterer.ParseOrdersMatched(*log); err == nil {
+				foundEvents = append(foundEvents, "OrdersMatched (NegRiskCtfExchange)")
+			}
+
+			// Check for PositionSplit event (ConditionalTokens and NegRiskAdapter)
+			if _, err := conditionalTokensFilterer.ParsePositionSplit(*log); err == nil {
+				foundEvents = append(foundEvents, "PositionSplit (ConditionalTokens)")
+			}
+			if _, err := negRiskAdapterFilterer.ParsePositionSplit(*log); err == nil {
+				foundEvents = append(foundEvents, "PositionSplit (NegRiskAdapter)")
+			}
+
+			// Check for PositionsMerge event (ConditionalTokens and NegRiskAdapter)
+			if _, err := conditionalTokensFilterer.ParsePositionsMerge(*log); err == nil {
+				foundEvents = append(foundEvents, "PositionsMerge (ConditionalTokens)")
+			}
+			if _, err := negRiskAdapterFilterer.ParsePositionsMerge(*log); err == nil {
+				foundEvents = append(foundEvents, "PositionsMerge (NegRiskAdapter)")
+			}
+
+			// Check for PositionsConverted event (NegRiskAdapter)
+			if _, err := negRiskAdapterFilterer.ParsePositionsConverted(*log); err == nil {
+				foundEvents = append(foundEvents, "PositionsConverted (NegRiskAdapter)")
+			}
+		}
+
+		// If we found any of the events we're interested in, include this transaction
+		if len(foundEvents) > 0 {
+			polymarketTxs = append(polymarketTxs, txWithEvents{tx: tx, events: foundEvents})
 		}
 	}
 
@@ -144,11 +202,10 @@ func processBlock(ctx context.Context, client *ethclient.Client, blockNumber uin
 		return true
 	}
 
-	for i, tx := range polymarketTxs {
-		contractInfo := polymarketContracts[*tx.To()]
+	for i, txData := range polymarketTxs {
+		tx := txData.tx
 		fmt.Printf("\n[Polymarket Transaction %d]\n", i+1)
 		fmt.Printf("  Block #%d\n", blockNumber)
-		fmt.Printf("  Contract: %s\n", contractInfo.name)
 		fmt.Printf("  Hash: %s\n", tx.Hash().Hex())
 
 		// Get sender address from transaction
@@ -159,25 +216,41 @@ func processBlock(ctx context.Context, client *ethclient.Client, blockNumber uin
 			fmt.Printf("  From: %s\n", sender.Hex())
 		}
 
-		fmt.Printf("  To: %s\n", tx.To().Hex())
+		if tx.To() != nil {
+			fmt.Printf("  To: %s\n", tx.To().Hex())
+			if contractInfo, ok := polymarketContracts[*tx.To()]; ok {
+				fmt.Printf("  Contract: %s\n", contractInfo.name)
+			}
+		} else {
+			fmt.Printf("  To: <Contract Creation>\n")
+		}
+
 		fmt.Printf("  Value: %s MATIC\n", formatWei(tx.Value()))
 		fmt.Printf("  Gas: %d\n", tx.Gas())
 		fmt.Printf("  Gas Price: %s Gwei\n", formatGwei(tx.GasPrice()))
 		fmt.Printf("  Nonce: %d\n", tx.Nonce())
 
-		// Decode transaction data
-		if tx.Data() != nil && len(tx.Data()) > 0 {
-			methodName, args := decodeTransactionData(tx.Data(), contractInfo.abi)
-			if methodName != "" {
-				fmt.Printf("  Method: %s\n", methodName)
-				if len(args) > 0 {
-					fmt.Printf("  Arguments:\n")
-					for _, arg := range args {
-						fmt.Printf("    %s\n", arg)
+		// Print events found in logs
+		fmt.Printf("  Events:\n")
+		for _, event := range txData.events {
+			fmt.Printf("    - %s\n", event)
+		}
+
+		// Decode transaction data if we can identify the contract
+		if tx.To() != nil {
+			if contractInfo, ok := polymarketContracts[*tx.To()]; ok {
+				if tx.Data() != nil && len(tx.Data()) > 0 {
+					methodName, args := decodeTransactionData(tx.Data(), contractInfo.abi)
+					if methodName != "" {
+						fmt.Printf("  Method: %s\n", methodName)
+						if len(args) > 0 {
+							fmt.Printf("  Arguments:\n")
+							for _, arg := range args {
+								fmt.Printf("    %s\n", arg)
+							}
+						}
 					}
 				}
-			} else {
-				fmt.Printf("  Data: %d bytes (unable to decode)\n", len(tx.Data()))
 			}
 		}
 	}

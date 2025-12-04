@@ -84,7 +84,7 @@ type AddressInfo struct {
 }
 
 // GetAddresses returns the top addresses with their counts
-func (s *Service) GetAddresses() []AddressInfo {
+func (s *Service) GetAddresses() ([]AddressInfo, uint64, uint64) {
 	result := make([]AddressInfo, 0, TOP_ADDRESS_COUNT)
 	for i := 0; i < TOP_ADDRESS_COUNT; i++ {
 		if s.addresses[i].address != (common.Address{}) {
@@ -94,7 +94,7 @@ func (s *Service) GetAddresses() []AddressInfo {
 			})
 		}
 	}
-	return result
+	return result, s.lastUpdateBlock, s.startBlock
 }
 
 func (s *Service) request(ctx context.Context) error {

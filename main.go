@@ -2,119 +2,66 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"flag"
 	"log"
-	"math/big"
-	"sort"
-	"time"
-
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
-
+	"os"
+	"os/signal"
+	"polymarket_leaders/internal/config"
 	"polymarket_leaders/internal/polymarket"
+	"syscall"
 )
 
 func main() {
-	// Polygon RPC endpoint (using public endpoint)
-	rpcURL := "https://polygon-rpc.com"
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	// Connect to Polygon RPC
-	client, err := ethclient.Dial(rpcURL)
+	configPath := flag.String("config", "config/config.yaml", "Path to configuration file")
+	//dataDir := flag.String("data-dir", "data", "Directory for persistent data")
+	flag.Parse()
+
+	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
-		log.Fatalf("Failed to connect to Polygon RPC: %v", err)
-	}
-	defer client.Close()
-
-	fmt.Println("Successfully connected to Polygon RPC")
-	fmt.Println("Starting continuous block monitoring...\n")
-
-	// Polygon chain ID is 137
-	chainID := big.NewInt(137)
-	signer := types.LatestSignerForChainID(chainID)
-
-	// Get current block number to start from
-	ctx := context.Background()
-	currentBlock, err := client.BlockNumber(ctx)
-	if err != nil {
-		log.Fatalf("Failed to get current block number: %v", err)
+		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	fmt.Printf("Starting from block: %d\n", currentBlock)
-	fmt.Println("Monitoring for new blocks...\n")
+	service, err := polymarket.NewService(
+		cfg.RPCURL, cfg.ChainId, cfg.RequestInterval,
+	)
+	if err != nil {
+		log.Fatalf("Failed to create polymarket service: %v", err)
+	}
+	defer service.Close()
 
-	// Map to track address counts
-	addressCounts := make(map[common.Address]int)
-	startBlock := currentBlock
+	errChan := make(chan error, 1) // err chan for service errors
 
-	// Endless loop to monitor blocks
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	log.Printf("Starting polymarket service")
+
+	go func() {
+		if err := service.Start(ctx); err != nil {
+			errChan <- err
+		}
+	}()
+
 	for {
-		// Process current block
-		for !processBlock(ctx, client, currentBlock, signer, addressCounts) {
-			// Wait before checking again
-			time.Sleep(1 * time.Second)
-		}
-
-		// Print top-10 addresses every 100 blocks
-		if (currentBlock-startBlock+1)%100 == 0 {
-			printTopAddresses(addressCounts, currentBlock)
-		}
-
-		// Wait for next block
-		currentBlock++
-
-		// Poll for next block (Polygon blocks are ~2 seconds, check every 1 second)
-		time.Sleep(1 * time.Second)
-	}
-}
-
-// processBlock processes a single block and collects addresses from Polymarket events
-func processBlock(ctx context.Context, client *ethclient.Client, blockNumber uint64, signer types.Signer, addressCounts map[common.Address]int) bool {
-	// Use the polymarket package to process the block
-	polymarketTxs, success := polymarket.ProcessBlock(ctx, client, blockNumber, signer)
-	if !success {
-		return false
-	}
-
-	// Extract addresses from all events and update counts
-	for _, txData := range polymarketTxs {
-		for _, event := range txData.Events {
-			addresses := polymarket.ExtractAddressesFromEvent(event.Data)
-			for _, addr := range addresses {
-				addressCounts[addr]++
-			}
+		select {
+		case sig := <-sigChan:
+			log.Printf("Received signal: %v", sig)
+			log.Println("Gracefully shutting down...")
+			cancel()
+			service.Close()
+			return
+		case err := <-errChan:
+			log.Printf("Service error: %v", err)
+			cancel()
+			os.Exit(1)
+		case <-ctx.Done():
+			log.Println("Context cancelled, shutting down...")
+			return
 		}
 	}
-
-	return true
-}
-
-// printTopAddresses prints the top-10 addresses by count
-func printTopAddresses(addressCounts map[common.Address]int, currentBlock uint64) {
-	// Create a slice of address-count pairs for sorting
-	type addressCount struct {
-		address common.Address
-		count   int
-	}
-
-	var pairs []addressCount
-	for addr, count := range addressCounts {
-		pairs = append(pairs, addressCount{address: addr, count: count})
-	}
-
-	// Sort by count (descending)
-	sort.Slice(pairs, func(i, j int) bool {
-		return pairs[i].count > pairs[j].count
-	})
-
-	// Print top-10
-	fmt.Printf("\n=== Top 10 Addresses (Block %d) ===\n", currentBlock)
-	topN := 10
-	if len(pairs) < topN {
-		topN = len(pairs)
-	}
-	for i := 0; i < topN; i++ {
-		fmt.Printf("%2d. %s: %d\n", i+1, pairs[i].address.Hex(), pairs[i].count)
-	}
-	fmt.Println()
 }

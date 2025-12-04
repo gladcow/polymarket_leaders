@@ -77,6 +77,26 @@ func (s *Service) Close() {
 	s.client.Close()
 }
 
+// AddressInfo represents an address with its count
+type AddressInfo struct {
+	Address string
+	Count   int
+}
+
+// GetAddresses returns the top addresses with their counts
+func (s *Service) GetAddresses() []AddressInfo {
+	result := make([]AddressInfo, 0, TOP_ADDRESS_COUNT)
+	for i := 0; i < TOP_ADDRESS_COUNT; i++ {
+		if s.addresses[i].address != (common.Address{}) {
+			result = append(result, AddressInfo{
+				Address: s.addresses[i].address.String(),
+				Count:   s.addresses[i].count,
+			})
+		}
+	}
+	return result
+}
+
 func (s *Service) request(ctx context.Context) error {
 	foundEvents, currentBlock, err := ProcessBlock(ctx, s.client, s.currentBlock)
 	if err != nil {

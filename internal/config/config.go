@@ -11,24 +11,27 @@ import (
 
 // default values
 const (
-	defaultRPCURL          = "https://polygon-rpc.com"
-	defaultChainId         = 137
-	defaultRequestInterval = 2 * time.Second
+	defaultRPCURL           = "https://polygon-rpc.com"
+	defaultChainId          = 137
+	defaultRequestInterval  = 2 * time.Second
+	defaultDashboardAddress = ":8080"
 )
 
 type Config struct {
-	RPCURL          string
-	ChainId         *big.Int
-	RequestInterval time.Duration
+	RPCURL           string
+	ChainId          *big.Int
+	RequestInterval  time.Duration
+	DashboardAddress string
 }
 
 func LoadConfig(path string) (*Config, error) {
 	_ = loadEnvFile()
 
 	config := &Config{
-		RPCURL:          defaultRPCURL,
-		ChainId:         big.NewInt(defaultChainId),
-		RequestInterval: defaultRequestInterval,
+		RPCURL:           defaultRPCURL,
+		ChainId:          big.NewInt(defaultChainId),
+		RequestInterval:  defaultRequestInterval,
+		DashboardAddress: defaultDashboardAddress,
 	}
 
 	// Override with environment variables
@@ -41,7 +44,6 @@ func LoadConfig(path string) (*Config, error) {
 		if !ok {
 			return nil, errors.New("could not convert string to big.Int")
 		}
-
 	}
 
 	if requestIntervalStr := os.Getenv("REQUEST_INTERVAL"); requestIntervalStr != "" {
@@ -50,8 +52,12 @@ func LoadConfig(path string) (*Config, error) {
 		}
 	}
 
-	log.Printf("Config loaded: RPC_URL=%s, CHAIN_ID=%s, REQUEST_INTERVAL=%s",
-		config.RPCURL, config.ChainId, config.RequestInterval)
+	if dashboardAddr := os.Getenv("DASHBOARD_ADDRESS"); dashboardAddr != "" {
+		config.DashboardAddress = dashboardAddr
+	}
+
+	log.Printf("Config loaded: RPC_URL=%s, CHAIN_ID=%s, REQUEST_INTERVAL=%s, DASHBOARD_ADDRESS=%s",
+		config.RPCURL, config.ChainId, config.RequestInterval, config.DashboardAddress)
 
 	return config, nil
 }

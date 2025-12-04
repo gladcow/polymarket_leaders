@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"polymarket_leaders/internal/config"
+	"polymarket_leaders/internal/dashboard"
 	"polymarket_leaders/internal/polymarket"
 	"syscall"
 )
@@ -33,6 +34,13 @@ func main() {
 
 	errChan := make(chan error, 1) // err chan for service errors
 
+	uiSrv := dashboard.NewService(cfg.DashboardAddress, service)
+	go func() {
+		if err := uiSrv.Start(); err != nil {
+			errChan <- err
+		}
+	}()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -52,6 +60,7 @@ func main() {
 		case sig := <-sigChan:
 			log.Printf("Received signal: %v", sig)
 			log.Println("Gracefully shutting down...")
+			uiSrv.Close(ctx)
 			cancel()
 			service.Close()
 			return

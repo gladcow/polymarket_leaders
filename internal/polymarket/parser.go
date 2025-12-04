@@ -5,6 +5,12 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"polymarket_leaders/internal/contract_bindings/negriskfeemodule"
+	"polymarket_leaders/internal/contract_bindings/proxywalletfactory"
+	"polymarket_leaders/internal/contract_bindings/safeproxyfactory"
+	"polymarket_leaders/internal/contract_bindings/uchilderc20proxy"
+	"polymarket_leaders/internal/contract_bindings/umactfadapter"
+	"polymarket_leaders/internal/contract_bindings/umactfadapter2"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -38,7 +44,7 @@ type TransactionWithEvents struct {
 }
 
 // ProcessBlock processes a single block and returns Polymarket transactions with events
-func ProcessBlock(ctx context.Context, client *ethclient.Client, blockNumber uint64, contracts map[common.Address]ContractInfo, signer types.Signer) ([]TransactionWithEvents, bool) {
+func ProcessBlock(ctx context.Context, client *ethclient.Client, blockNumber uint64, signer types.Signer) ([]TransactionWithEvents, bool) {
 	// Get the full block with transactions
 	block, err := client.BlockByNumber(ctx, big.NewInt(int64(blockNumber)))
 	if err != nil {
@@ -182,6 +188,50 @@ func DecodeTransactionData(data []byte, contractABI *abi.ABI) (string, []string)
 	return method.Name, argStrings
 }
 
+// ExtractAddressesFromEvent extracts addresses (Maker, Taker, TakerOrderMaker, Stakeholder) from an event
+// It excludes addresses that are Polymarket contract addresses
+func ExtractAddressesFromEvent(eventData interface{}) []common.Address {
+	var addresses []common.Address
+
+	switch e := eventData.(type) {
+	// CTFExchange events
+	case *ctfexchange.CtfExchangeOrderFilled:
+		addresses = append(addresses, e.Maker, e.Taker)
+	case *ctfexchange.CtfExchangeOrdersMatched:
+		addresses = append(addresses, e.TakerOrderMaker)
+
+	// NegRiskCtfExchange events
+	case *negriskctfexchange.NegRiskCtfExchangeOrderFilled:
+		addresses = append(addresses, e.Maker, e.Taker)
+	case *negriskctfexchange.NegRiskCtfExchangeOrdersMatched:
+		addresses = append(addresses, e.TakerOrderMaker)
+
+	// ConditionalTokens events
+	case *conditionaltokens.ConditionalTokensPositionSplit:
+		addresses = append(addresses, e.Stakeholder)
+	case *conditionaltokens.ConditionalTokensPositionsMerge:
+		addresses = append(addresses, e.Stakeholder)
+
+	// NegRiskAdapter events
+	case *negriskadapter.NegRiskAdapterPositionSplit:
+		addresses = append(addresses, e.Stakeholder)
+	case *negriskadapter.NegRiskAdapterPositionsMerge:
+		addresses = append(addresses, e.Stakeholder)
+	case *negriskadapter.NegRiskAdapterPositionsConverted:
+		addresses = append(addresses, e.Stakeholder)
+	}
+
+	// Filter out contract addresses
+	var filtered []common.Address
+	for _, addr := range addresses {
+		if _, isContract := contracts[addr]; !isContract {
+			filtered = append(filtered, addr)
+		}
+	}
+
+	return filtered
+}
+
 // PrintEventData prints the parsed event data in a readable format
 func PrintEventData(eventData interface{}, indent string) {
 	switch e := eventData.(type) {
@@ -304,3 +354,50 @@ func GetContractABI(metadata *bind.MetaData) *abi.ABI {
 	return contractABI
 }
 
+// contracts is a package-level constant map of Polymarket contract addresses to their contract info
+var contracts map[common.Address]ContractInfo
+
+func init() {
+	contracts = map[common.Address]ContractInfo{
+		common.HexToAddress("0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"): {
+			Name: "ConditionalTokens",
+			ABI:  GetContractABI(conditionaltokens.ConditionalTokensMetaData),
+		},
+		common.HexToAddress("0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E"): {
+			Name: "CTFExchange",
+			ABI:  GetContractABI(ctfexchange.CtfExchangeMetaData),
+		},
+		common.HexToAddress("0x65070BE91477460D8A7AeEb94ef92fe056C2f2A7"): {
+			Name: "UmaCtfAdapter",
+			ABI:  GetContractABI(umactfadapter.UmaCtfAdapterMetaData),
+		},
+		common.HexToAddress("0xC5d563A36AE78145C45a50134d48A1215220f80a"): {
+			Name: "NegRiskCtfExchange",
+			ABI:  GetContractABI(negriskctfexchange.NegRiskCtfExchangeMetaData),
+		},
+		common.HexToAddress("0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296"): {
+			Name: "NegRiskAdapter",
+			ABI:  GetContractABI(negriskadapter.NegRiskAdapterMetaData),
+		},
+		common.HexToAddress("0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"): {
+			Name: "UChildERC20Proxy",
+			ABI:  GetContractABI(uchilderc20proxy.UchaildErc20ProxyMetaData),
+		},
+		common.HexToAddress("0x6A9D222616C90FcA5754cd1333cFD9b7fb6a4F74"): {
+			Name: "UmaCtfAdapter2",
+			ABI:  GetContractABI(umactfadapter2.UmaCtfAdapter2MetaData),
+		},
+		common.HexToAddress("0xaacfeea03eb1561c4e67d661e40682bd20e3541b"): {
+			Name: "SafeProxyFactory",
+			ABI:  GetContractABI(safeproxyfactory.SafeProxyFactoryMetaData),
+		},
+		common.HexToAddress("0xaB45c5A4B0c941a2F231C04C3f49182e1A254052"): {
+			Name: "ProxyWalletFactory",
+			ABI:  GetContractABI(proxywalletfactory.ProxyWalletFactoryMetaData),
+		},
+		common.HexToAddress("0x78769D50Be1763ed1CA0D5E878D93f05aabff29e"): {
+			Name: "NegRiskFeeModule",
+			ABI:  GetContractABI(negriskfeemodule.NegRiskFeeModuleMetaData),
+		},
+	}
+}

@@ -27,6 +27,7 @@ type Service struct {
 	addresses       [TOP_ADDRESS_COUNT]addressCount
 	startBlock      uint64
 	currentBlock    uint64
+	lastUpdateBlock uint64
 }
 
 func NewService(
@@ -77,23 +78,21 @@ func (s *Service) Close() {
 }
 
 func (s *Service) request(ctx context.Context) error {
-	polymarketTxs, success := ProcessBlock(ctx, s.client, s.currentBlock, s.signer)
-	if !success {
-		return nil // TODO: get error from ProcessBlock
+	foundEvents, currentBlock, err := ProcessBlock(ctx, s.client, s.currentBlock)
+	if err != nil {
+		return err
 	}
 
 	// Extract addresses from all events and update counts
-	for _, txData := range polymarketTxs {
-		for _, event := range txData.Events {
-			addresses := ExtractAddressesFromEvent(event.Data)
-			for _, addr := range addresses {
-				s.addressCounts[addr]++
-			}
+	for _, event := range foundEvents {
+		addresses := ExtractAddressesFromEvent(event.Data)
+		for _, addr := range addresses {
+			s.addressCounts[addr]++
 		}
 	}
 
 	// Calculate top-10 addresses every 10 blocks
-	if (s.currentBlock-s.startBlock+1)%10 == 0 {
+	if currentBlock-s.lastUpdateBlock > 10 {
 		var pairs []addressCount
 		for addr, count := range s.addressCounts {
 			pairs = append(pairs, addressCount{address: addr, count: count})
@@ -114,10 +113,11 @@ func (s *Service) request(ctx context.Context) error {
 			s.addresses[i].count = pairs[i].count
 			log.Printf("%s: %d", s.addresses[i].address.String(), s.addresses[i].count)
 		}
+		s.lastUpdateBlock = currentBlock
 	}
 
 	// Wait for next block
-	s.currentBlock++
+	s.currentBlock = currentBlock
 
 	return nil
 }

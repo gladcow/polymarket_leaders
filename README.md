@@ -2,6 +2,8 @@
 
 A Go application that monitors Polymarket blockchain activity on Polygon and tracks the top 10 most active addresses based on trading and position events.
 
+**🌐 Live Service:** [http://37.46.135.141:8080/](http://37.46.135.141:8080/)
+
 ## Overview
 
 This service continuously monitors the Polygon blockchain for Polymarket-related events, extracts user addresses from trading activities, and maintains a leaderboard of the most active participants. It provides both a web dashboard and a JSON API to view the current leaders.

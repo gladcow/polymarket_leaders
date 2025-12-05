@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  app:
+    image: polymarket_leaders:latest
+    container_name: go-http-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - RPC_URL=${RPC_URL}
+      - CHAIN_ID=${CHAIN_ID}
+      - REQUEST_INTERVAL=${REQUEST_INTERVAL}
+      - DASHBOARD_ADDRESS=${DASHBOARD_ADDRESS}
+    env_file:
+      - .env.production
+    networks:
+      - app-network
+    volumes:
+      # For logs or static files if needed
+      - ./logs:/app/logs
+    # Resource limits (adjust based on your VPS specs)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    read_only: true  # Makes container filesystem read-only
+    tmpfs:
+      - /tmp
+
+networks:
+  app-network:
+    driver: bridge

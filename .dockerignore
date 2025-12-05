@@ -1,0 +1,42 @@
+# Git files
+.git
+.gitignore
+
+# Build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+polymarket_leaders
+
+# Test files
+*_test.go
+**/*_test.go
+
+# Documentation
+*.md
+README.md
+LICENSE
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker files
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Data and logs
+data/
+logs/
+*.log
+

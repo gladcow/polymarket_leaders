@@ -20,33 +20,37 @@ import (
 	"log"
 	"math/big"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
 
 // default values
 const (
-	defaultRPCURL           = "https://polygon-rpc.com"
-	defaultChainId          = 137
-	defaultRequestInterval  = 2 * time.Second
-	defaultDashboardAddress = ":8080"
+	defaultRPCURL              = "https://polygon-rpc.com"
+	defaultChainId             = 137
+	defaultRequestInterval     = 2 * time.Second
+	defaultDashboardAddress    = ":8080"
+	defaultResetIntervalBlocks = 1000
 )
 
 type Config struct {
-	RPCURL           string
-	ChainId          *big.Int
-	RequestInterval  time.Duration
-	DashboardAddress string
+	RPCURL              string
+	ChainId             *big.Int
+	RequestInterval     time.Duration
+	DashboardAddress    string
+	ResetIntervalBlocks uint64
 }
 
 func LoadConfig(path string) (*Config, error) {
 	_ = loadEnvFile()
 
 	config := &Config{
-		RPCURL:           defaultRPCURL,
-		ChainId:          big.NewInt(defaultChainId),
-		RequestInterval:  defaultRequestInterval,
-		DashboardAddress: defaultDashboardAddress,
+		RPCURL:              defaultRPCURL,
+		ChainId:             big.NewInt(defaultChainId),
+		RequestInterval:     defaultRequestInterval,
+		DashboardAddress:    defaultDashboardAddress,
+		ResetIntervalBlocks: defaultResetIntervalBlocks,
 	}
 
 	// Override with environment variables
@@ -71,8 +75,14 @@ func LoadConfig(path string) (*Config, error) {
 		config.DashboardAddress = dashboardAddr
 	}
 
-	log.Printf("Config loaded: RPC_URL=%s, CHAIN_ID=%s, REQUEST_INTERVAL=%s, DASHBOARD_ADDRESS=%s",
-		config.RPCURL, config.ChainId, config.RequestInterval, config.DashboardAddress)
+	if resetIntervalStr := os.Getenv("RESET_INTERVAL_BLOCKS"); resetIntervalStr != "" {
+		if resetInterval, err := strconv.ParseUint(resetIntervalStr, 10, 64); err == nil {
+			config.ResetIntervalBlocks = resetInterval
+		}
+	}
+
+	log.Printf("Config loaded: RPC_URL=%s, CHAIN_ID=%s, REQUEST_INTERVAL=%s, DASHBOARD_ADDRESS=%s, RESET_INTERVAL_BLOCKS=%d",
+		config.RPCURL, config.ChainId, config.RequestInterval, config.DashboardAddress, config.ResetIntervalBlocks)
 
 	return config, nil
 }

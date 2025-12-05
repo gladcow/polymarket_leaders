@@ -40,10 +40,11 @@ type AddressResponse struct {
 }
 
 type Response struct {
-	Service    string            `json:"service"`
-	StartBlock uint64            `json:"startBlock"`
-	LastBlock  uint64            `json:"lastBlock"`
-	Addresses  []AddressResponse `json:"addresses"`
+	Service            string            `json:"service"`
+	StartBlock         uint64            `json:"startBlock"`
+	LastBlock          uint64            `json:"lastBlock"`
+	ResetIntervalBlocks uint64            `json:"resetIntervalBlocks"`
+	Addresses          []AddressResponse `json:"addresses"`
 }
 
 func NewService(dashboardAddress string, polymarketService *polymarket.Service) *Service {
@@ -67,10 +68,11 @@ func (s *Service) getData() Response {
 	addresses, lastBlock, startBlock := s.polymarketService.GetAddresses()
 
 	response := Response{
-		Service:    "polymarket-activity-leaders",
-		StartBlock: startBlock,
-		LastBlock:  lastBlock,
-		Addresses:  make([]AddressResponse, 0, len(addresses)),
+		Service:             "polymarket-activity-leaders",
+		StartBlock:          startBlock,
+		LastBlock:           lastBlock,
+		ResetIntervalBlocks: s.polymarketService.GetResetIntervalBlocks(),
+		Addresses:           make([]AddressResponse, 0, len(addresses)),
 	}
 
 	for _, addr := range addresses {

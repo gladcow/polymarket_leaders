@@ -86,6 +86,7 @@
         <p><strong>Start Block:</strong> {{.StartBlock}}</p>
         <p><strong>Last Update Block:</strong> {{.LastBlock}}</p>
         <p><strong>Blocks Processed:</strong> {{.LastBlock}} - {{.StartBlock}} = {{sub .LastBlock .StartBlock}}</p>
+        <p><strong>Note:</strong> Address counts are automatically reset every {{.ResetIntervalBlocks}} blocks. The start block updates when a reset occurs, ensuring the leaderboard reflects recent activity within the current tracking window.</p>
     </div>
     
     <table>

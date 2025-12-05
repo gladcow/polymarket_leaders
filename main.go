@@ -40,7 +40,7 @@ func main() {
 	}
 
 	service, err := polymarket.NewService(
-		cfg.RPCURL, cfg.ChainId, cfg.RequestInterval,
+		cfg.RPCURL, cfg.ChainId, cfg.RequestInterval, cfg.ResetIntervalBlocks,
 	)
 	if err != nil {
 		log.Fatalf("Failed to create polymarket service: %v", err)

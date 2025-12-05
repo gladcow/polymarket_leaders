@@ -64,6 +64,7 @@ The application can be configured via environment variables or a `.env` file. Co
 | `CHAIN_ID` | `137` | Polygon chain ID |
 | `REQUEST_INTERVAL` | `2s` | Interval between block checks (e.g., "2s", "5s") |
 | `DASHBOARD_ADDRESS` | `:8080` | HTTP server address for dashboard |
+| `RESET_INTERVAL_BLOCKS` | `1000` | Number of blocks after which address counts are reset |
 
 ### Environment File
 
@@ -74,6 +75,7 @@ RPC_URL=https://polygon-rpc.com
 CHAIN_ID=137
 REQUEST_INTERVAL=2s
 DASHBOARD_ADDRESS=:8080
+RESET_INTERVAL_BLOCKS=1000
 ```
 
 ### Docker Compose
@@ -85,6 +87,7 @@ RPC_URL=https://your-polygon-rpc-endpoint.com
 CHAIN_ID=137
 REQUEST_INTERVAL=2s
 DASHBOARD_ADDRESS=:8080
+RESET_INTERVAL_BLOCKS=1000
 ```
 
 Then start the service:
@@ -114,6 +117,7 @@ docker run -d \
   -e CHAIN_ID=137 \
   -e REQUEST_INTERVAL=2s \
   -e DASHBOARD_ADDRESS=:8080 \
+  -e RESET_INTERVAL_BLOCKS=1000 \
   polymarket_leaders:latest
 ```
 
@@ -155,6 +159,8 @@ The application consists of three main components:
 ### Event Processing
 
 The service processes blocks sequentially, extracting events from Polymarket contracts and counting occurrences per address. The top 10 addresses are recalculated every 10 blocks.
+
+**Address Count Reset**: To prevent unbounded memory growth and provide periodic leaderboard resets, the service automatically resets all address counts and clears the leaderboard every `RESET_INTERVAL_BLOCKS` blocks (default: 1000). When a reset occurs, the `startBlock` is updated to the current block, effectively starting a new tracking period. This ensures the leaderboard reflects recent activity within the specified block window.
 
 ### Contract Bindings
 

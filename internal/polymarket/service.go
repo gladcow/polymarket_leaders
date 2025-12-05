@@ -35,30 +35,33 @@ type addressCount struct {
 }
 
 type Service struct {
-	client          *ethclient.Client
-	signer          types.Signer
-	requestInterval time.Duration
-	addressCounts   map[common.Address]int
-	addresses       [TOP_ADDRESS_COUNT]addressCount
-	startBlock      uint64
-	currentBlock    uint64
-	lastUpdateBlock uint64
+	client             *ethclient.Client
+	signer             types.Signer
+	requestInterval    time.Duration
+	resetIntervalBlocks uint64
+	addressCounts      map[common.Address]int
+	addresses          [TOP_ADDRESS_COUNT]addressCount
+	startBlock         uint64
+	currentBlock       uint64
+	lastUpdateBlock    uint64
 }
 
 func NewService(
 	rpcUrl string,
 	chainID *big.Int,
 	interval time.Duration,
+	resetIntervalBlocks uint64,
 ) (*Service, error) {
 	client, err := ethclient.Dial(rpcUrl)
 	if err != nil {
 		return nil, err
 	}
 	return &Service{
-		client:          client,
-		signer:          types.LatestSignerForChainID(chainID),
-		requestInterval: interval,
-		addressCounts:   make(map[common.Address]int),
+		client:              client,
+		signer:              types.LatestSignerForChainID(chainID),
+		requestInterval:     interval,
+		resetIntervalBlocks: resetIntervalBlocks,
+		addressCounts:       make(map[common.Address]int),
 	}, nil
 }
 
@@ -112,10 +115,27 @@ func (s *Service) GetAddresses() ([]AddressInfo, uint64, uint64) {
 	return result, s.lastUpdateBlock, s.startBlock
 }
 
+// GetResetIntervalBlocks returns the configured reset interval in blocks
+func (s *Service) GetResetIntervalBlocks() uint64 {
+	return s.resetIntervalBlocks
+}
+
 func (s *Service) request(ctx context.Context) error {
 	foundEvents, currentBlock, err := ProcessBlock(ctx, s.client, s.currentBlock)
 	if err != nil {
 		return err
+	}
+
+	// Reset address counts if we've exceeded the reset interval
+	if currentBlock > s.startBlock && (currentBlock-s.startBlock) > s.resetIntervalBlocks {
+		log.Printf("Resetting address counts at block %d (started at %d, interval: %d blocks)", 
+			currentBlock, s.startBlock, s.resetIntervalBlocks)
+		s.addressCounts = make(map[common.Address]int)
+		s.startBlock = currentBlock
+		// Clear the addresses array
+		for i := range s.addresses {
+			s.addresses[i] = addressCount{}
+		}
 	}
 
 	// Extract addresses from all events and update counts
